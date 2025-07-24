@@ -1,0 +1,8 @@
+.ipynb_checkpoints/
+Untitled*.ipynb
+chromaDB
+.env 
+__pycache__
+test.ipynb
+venv
+
