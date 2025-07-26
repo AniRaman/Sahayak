@@ -1,27 +1,30 @@
 """
 Sahayak Retrieval Agent
 
-Database and storage retrieval specialist that handles finding and retrieving 
-educational materials from various storage systems including Firestore, 
-Cloud Storage, and local databases.
+Unified database and storage retrieval specialist for educational materials.
+Provides intelligent search across all educational content types with a clean,
+simplified API.
 
-Key Functions:
-- search_knowledge_base: Search educational resources in Firestore database
-- retrieve_worksheets: Find worksheets by subject, grade, and difficulty
-- find_documents: Search for PDFs, presentations, and documents
-- query_file_storage: Search cloud storage for educational materials
-- search_by_metadata: Advanced search using tags, categories, and filters
+Core Functions:
+- search_educational_content: UNIFIED search across all educational content types
+- query_file_storage: Direct cloud storage access for raw file operations
+
+Features:
+- Single intelligent search replacing multiple redundant functions
+- Smart content type mapping (lessons, worksheets, documents, all)
+- Cross-collection relevance ranking and result normalization
+- Advanced filtering by subject, difficulty, grade, curriculum, file format
+- Direct cloud storage browsing for unindexed files
 """
 
 from .agent import (
-    search_knowledge_base,
-    retrieve_worksheets,
-    find_documents,
-    query_file_storage,
-    search_by_metadata,
+    # Core unified functions
+    search_educational_content,  # Primary unified search
+    query_file_storage,         # Cloud storage queries
+    # Agent instance
     root_agent
 )
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __agent_name__ = "Sahayak Retrieval Agent"
-__specialization__ = "Database & Storage Retrieval Specialist"
+__specialization__ = "Unified Educational Content Search & Cloud Storage Access"
