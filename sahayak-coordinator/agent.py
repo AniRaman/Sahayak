@@ -19,11 +19,23 @@ from enum import Enum
 
 # Google ADK imports - proper implementation
 from google.adk.agents import Agent
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 
 # Google Cloud imports
 from google.cloud import firestore
 import google.generativeai as genai
+
+# Import sub-agent functions
+from sub_agents.sahayak_content_agent.agent import (
+    generate_educational_content,
+    search_web_for_education,
+    align_with_curriculum,
+    create_assessment_questions
+)
+
+from sub_agents.sahayak_retrieval_agent.agent import (
+    search_educational_content,  # Primary unified search function
+    query_file_storage
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,71 +77,57 @@ class SahayakCoordinatorAgent(Agent):
     """
     
     def __init__(self):
-        # Initialize parent ADK Agent
+        # Initialize ADK Agent with proper structure
         super().__init__(
-            name="sahayak-coordinator",
-            description="Central orchestrator for educational content generation pipeline"
+            name="sahayak_coordinator",
+            model="gemini-1.5-pro",
+            description="Central orchestrator for educational content generation pipeline",
+            instruction=(
+                "You are the central coordinator for an advanced educational AI system called Sahayak. "
+                "Your primary responsibility is to orchestrate multiple specialized educational agents "
+                "to provide comprehensive educational content generation services.\n\n"
+                "Your core capabilities include:\n\n"
+                "1. INTELLIGENT INPUT ANALYSIS:\n"
+                "   - Analyze teacher inputs (text, images, PDFs) to understand educational intent\n"
+                "   - Determine subject matter, difficulty level, and curriculum requirements\n"
+                "   - Identify the most appropriate specialized agents for each task\n\n"
+                "2. MULTI-AGENT ORCHESTRATION:\n"
+                "   - Route requests to specialized sub-agents (Content Agent, Worksheet Agent, etc.)\n"
+                "   - Manage task dependencies and execution priorities\n"
+                "   - Coordinate parallel agent execution for efficiency\n\n"
+                "3. EDUCATIONAL WORKFLOW MANAGEMENT:\n"
+                "   - Handle complex educational content generation workflows\n"
+                "   - Ensure curriculum alignment across all generated materials\n"
+                "   - Manage quality control and content integration\n\n"
+                "4. RESPONSE AGGREGATION:\n"
+                "   - Combine outputs from multiple agents into coherent deliverables\n"
+                "   - Format results appropriately for teacher consumption\n"
+                "   - Provide comprehensive educational packages\n\n"
+                "Always prioritize educational quality, curriculum alignment, and teacher needs. "
+                "Ensure all generated content is pedagogically sound and appropriate for the target audience."
+            ),
+            tools=[]  # Will be populated with MCP toolsets for sub-agents
         )
-        
-        self.agent_id = os.getenv("COORDINATOR_AGENT_ID", "sahayak-coordinator")
-        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
         
         # Initialize Google services
         self._init_google_services()
         
-        # Initialize MCP toolsets for sub-agents
-        self._init_mcp_toolsets()
-        
-        # Agent registry and sessions
-        self.registered_agents = {}
-        self.active_sessions = {}
-        
-        logger.info(f"Sahayak Coordinator Agent {self.agent_id} initialized")
+        logger.info(f"Sahayak Coordinator Agent {self.name} initialized")
 
     def _init_google_services(self):
         """Initialize Google Cloud services"""
         try:
             # Configure Gemini AI
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            self.gemini_model = genai.GenerativeModel(
-                os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
-            )
-            
-            # Initialize Firestore for persistent memory
-            self.firestore_client = firestore.Client(project=self.project_id)
+            if os.getenv("GEMINI_API_KEY"):
+                genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+                logger.info("Gemini AI configured successfully")
             
             logger.info("Google services initialized successfully")
             
         except Exception as e:
             logger.error(f"Failed to initialize Google services: {e}")
-            raise
+            # Don't raise to allow testing without full cloud setup
 
-    def _init_mcp_toolsets(self):
-        """Initialize MCP toolsets for sub-agent communication"""
-        try:
-            # Initialize MCP toolset for content agent
-            self.content_agent_mcp = MCPToolset(
-                server_params=StdioServerParameters(
-                    command="python",
-                    args=[
-                        os.path.join(os.path.dirname(__file__), 
-                                   "sub-agents", "sahayak-content-agent", "agent.py")
-                    ],
-                    env={"CONTENT_AGENT_ID": "sahayak-content-agent"}
-                )
-            )
-            
-            # Initialize additional MCP toolsets for other agents as needed
-            # (placeholder for future agents)
-            self.agent_toolsets = {
-                "content_agent": self.content_agent_mcp
-            }
-            
-            logger.info("MCP toolsets initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"MCP toolsets initialization failed: {e}")
-            self.agent_toolsets = {}
 
     async def analyze_input(self, raw_input: str, metadata: Dict = None) -> TeacherInput:
         """
@@ -164,7 +162,9 @@ class SahayakCoordinatorAgent(Agent):
             }}
             """
             
-            response = await self.gemini_model.generate_content_async(analysis_prompt)
+            # Get Gemini model dynamically
+            gemini_model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-pro"))
+            response = await gemini_model.generate_content_async(analysis_prompt)
             analysis = json.loads(response.text)
             
             # Determine input type
@@ -319,31 +319,58 @@ class SahayakCoordinatorAgent(Agent):
         return results
 
     async def _call_content_agent(self, task_data: Dict) -> Dict[str, Any]:
-        """Call ContentAgent via ADK MCP toolset"""
+        """Call ContentAgent via direct function calls"""
         try:
-            content_agent_toolset = self.agent_toolsets.get("content_agent")
-            if not content_agent_toolset:
-                raise ValueError("Content agent MCP toolset not available")
+            logger.info("📞 Calling ContentAgent with direct function calls...")
             
-            # Call the content agent's generate_educational_content tool via MCP
-            result = await content_agent_toolset.call_tool(
-                "generate_educational_content",
-                {
-                    "prompt": task_data.get("prompt", ""),
-                    "metadata": {
-                        "intent": task_data.get("intent", "lesson_generation"),
-                        "subject": task_data.get("subject"),
-                        "complexity": task_data.get("complexity", "intermediate"),
-                        "curriculum_standard": task_data.get("curriculum_standard")
-                    }
-                }
+            # Determine content type from metadata
+            intent = task_data.get("intent", "explanation")
+            content_type = "lesson_plan" if intent == "lesson_generation" else "explanation"
+            
+            # Generate educational content using the parameters
+            content_result = generate_educational_content(
+                prompt=task_data.get("prompt", ""),
+                subject=task_data.get("subject", "General"),
+                difficulty=task_data.get("complexity", "intermediate"),
+                content_type=content_type,
+                curriculum_standard=task_data.get("curriculum_standard", ""),
+                language="english"
             )
             
-            logger.info("ContentAgent called successfully via MCP")
-            return result
+            # Search knowledge base for additional context using unified search
+            knowledge_result = search_educational_content(
+                query=task_data.get("prompt", ""),
+                content_types=["lessons", "articles", "explanations"],
+                subject=task_data.get("subject", ""),
+                difficulty=task_data.get("complexity", "intermediate"),
+                limit=3
+            )
+            
+            # Check curriculum alignment if standards are specified
+            alignment_result = {}
+            if task_data.get("curriculum_standard"):
+                alignment_result = align_with_curriculum(
+                    content=content_result.get("content", {}).get("body", ""),
+                    curriculum=task_data.get("curriculum_standard"),
+                    subject=task_data.get("subject", ""),
+                    grade_level=""
+                )
+            
+            # Aggregate all results
+            final_result = {
+                "status": "success",
+                "agent": "content_agent",
+                "primary_content": content_result,
+                "knowledge_base_results": knowledge_result,
+                "curriculum_alignment": alignment_result,
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+            logger.info("✅ ContentAgent completed successfully with direct function calls")
+            return final_result
             
         except Exception as e:
-            logger.error(f"ContentAgent MCP call failed: {e}")
+            logger.error(f"❌ ContentAgent direct call failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
@@ -353,15 +380,51 @@ class SahayakCoordinatorAgent(Agent):
     async def _call_worksheet_agent(self, task_data: Dict) -> Dict[str, Any]:
         """Call WorksheetAgent via ADK MCP toolset"""
         try:
-            # Placeholder implementation - will be implemented when worksheet agent is created
-            logger.info("Calling WorksheetAgent (not yet implemented)")
-            return {
-                "status": "success", 
-                "slides": "Generated slides (placeholder)",
-                "worksheets": "Generated worksheets (placeholder)",
-                "agent": "worksheet_agent",
-                "note": "Agent not yet implemented with ADK"
+            logger.info("Calling WorksheetAgent with real implementation")
+            
+            # Import the actual WorksheetAgent function
+            from sub_agents.sahayak_worksheet_agent.agent import generate_educational_materials
+            
+            # Extract parameters from task_data
+            content = task_data.get("content", "")
+            file_info = task_data.get("file_info", {})
+            subject = task_data.get("subject", "General")
+            grade_level = task_data.get("grade_level", "Middle School")
+            curriculum = task_data.get("curriculum", "General")
+            output_format = task_data.get("output_format", "both")
+            
+            # Prepare parameters for WorksheetAgent
+            agent_params = {
+                "content": content,
+                "subject": subject,
+                "grade_level": grade_level,
+                "curriculum": curriculum,
+                "output_format": output_format,
+                "save_to_storage": True
             }
+            
+            # Add file parameters if available
+            if file_info:
+                if "artifact_filename" in file_info:
+                    agent_params["artifact_filename"] = file_info["artifact_filename"]
+                if "pdf_base64" in file_info:
+                    agent_params["pdf_base64"] = file_info["pdf_base64"]
+                if "image_base64" in file_info:
+                    agent_params["image_base64"] = file_info["image_base64"]
+                if "word_base64" in file_info:
+                    agent_params["word_base64"] = file_info["word_base64"]
+            
+            logger.info(f"Calling WorksheetAgent with params: content={len(content)} chars, subject={subject}, grade_level={grade_level}")
+            
+            # Call the actual WorksheetAgent function
+            result = generate_educational_materials(**agent_params)
+            
+            # Add agent identifier to result
+            result["agent"] = "worksheet_agent"
+            
+            logger.info(f"WorksheetAgent returned: {result.get('status')}")
+            return result
+            
         except Exception as e:
             logger.error(f"WorksheetAgent call failed: {e}")
             return {
@@ -475,7 +538,12 @@ class SahayakCoordinatorAgent(Agent):
     async def _load_teacher_preferences(self, teacher_id: str) -> Dict[str, Any]:
         """Load teacher preferences from Firestore"""
         try:
-            doc_ref = self.firestore_client.collection("teachers").document(teacher_id)
+            # Get Firestore client dynamically
+            project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
+            if not project_id:
+                return {}
+            firestore_client = firestore.Client(project=project_id)
+            doc_ref = firestore_client.collection("teachers").document(teacher_id)
             doc = doc_ref.get()
             
             if doc.exists:
@@ -530,11 +598,369 @@ class SahayakCoordinatorAgent(Agent):
                 "timestamp": firestore.SERVER_TIMESTAMP
             }
             
-            self.firestore_client.collection("interactions").add(interaction_data)
+            # Get Firestore client dynamically
+            project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
+            if project_id:
+                firestore_client = firestore.Client(project=project_id)
+                firestore_client.collection("interactions").add(interaction_data)
             logger.info(f"Interaction stored for teacher {teacher_id}")
             
         except Exception as e:
             logger.error(f"Failed to store interaction: {e}")
 
-# Global instance for ADK Agent integration
-sahayak_coordinator = SahayakCoordinatorAgent()
+
+# Convenience functions for direct teacher interaction with the coordinator
+def create_lesson_plan(
+    topic: str,
+    subject: str = "General",
+    grade_level: str = "intermediate",
+    curriculum: str = "",
+    duration: int = 45
+) -> dict:
+    """
+    Create a comprehensive lesson plan for teachers.
+    
+    Args:
+        topic (str): The topic or concept to create a lesson plan for
+        subject (str): Subject area (e.g., Mathematics, Science, History)
+        grade_level (str): Difficulty/grade level (beginner, intermediate, advanced)
+        curriculum (str): Curriculum standard (CBSE, IB, Common Core, etc.)
+        duration (int): Lesson duration in minutes
+        
+    Returns:
+        dict: Status and generated lesson plan
+    """
+    logger.info(f"📚 create_lesson_plan called for topic: '{topic}', subject: {subject}, grade: {grade_level}")
+    
+    try:
+        # Use the imported content agent functions directly
+        prompt = f"Create a detailed {duration}-minute lesson plan on '{topic}' for {grade_level} level {subject} students."
+        
+        # Generate the lesson plan content
+        result = generate_educational_content(
+            prompt=prompt,
+            subject=subject,
+            difficulty=grade_level,
+            content_type="lesson_plan",
+            curriculum_standard=curriculum,
+            language="english"
+        )
+        
+        if result.get("status") == "success":
+            logger.info(f"✅ Lesson plan created successfully for {topic}")
+            return {
+                "status": "success",
+                "lesson_plan": result.get("content", {}),
+                "topic": topic,
+                "subject": subject,
+                "grade_level": grade_level,
+                "duration_minutes": duration,
+                "curriculum": curriculum
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.error(f"❌ Lesson plan creation failed: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to create lesson plan: {str(e)}"
+        }
+
+
+def explain_concept(
+    concept: str,
+    subject: str = "General",
+    difficulty: str = "intermediate",
+    include_examples: bool = True
+) -> dict:
+    """
+    Generate a clear explanation of an educational concept.
+    
+    Args:
+        concept (str): The concept to explain
+        subject (str): Subject area
+        difficulty (str): Difficulty level (beginner, intermediate, advanced)
+        include_examples (bool): Whether to include practical examples
+        
+    Returns:
+        dict: Status and concept explanation
+    """
+    logger.info(f"💡 explain_concept called for: '{concept}', subject: {subject}, difficulty: {difficulty}")
+    
+    try:
+        prompt = f"Explain the concept of '{concept}' in {subject}"
+        if include_examples:
+            prompt += " with practical examples and real-world applications"
+        prompt += f" for {difficulty} level students."
+        
+        result = generate_educational_content(
+            prompt=prompt,
+            subject=subject,
+            difficulty=difficulty,
+            content_type="explanation",
+            curriculum_standard="",
+            language="english"
+        )
+        
+        if result.get("status") == "success":
+            logger.info(f"✅ Concept explanation generated successfully for {concept}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Concept explanation failed: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to explain concept: {str(e)}"
+        }
+
+
+def search_educational_resources(
+    query: str,
+    subject: str = "",
+    difficulty: str = "intermediate",
+    resource_type: str = "all",
+    include_documents: bool = True
+) -> dict:
+    """
+    Comprehensive search for educational resources using specialized retrieval agent.
+    
+    Args:
+        query (str): Search query for educational content
+        subject (str): Subject area filter
+        difficulty (str): Difficulty level filter
+        resource_type (str): Type of resource (articles, videos, lessons, all)
+        include_documents (bool): Whether to search for documents/files
+        
+    Returns:
+        dict: Status and comprehensive search results
+    """
+    print(f"[RESOURCE_SEARCH] Comprehensive search for '{query}' in {subject} {difficulty}")
+    
+    try:
+        # Use the unified search function for comprehensive database search
+        unified_results = search_educational_content(
+            query=query,
+            content_types=["all"] if resource_type == "all" else [resource_type],
+            subject=subject,
+            difficulty=difficulty,
+            limit=15  # Higher limit since we're doing unified search
+        )
+        
+        # Use content agent for web search (still separate as it searches external sources)
+        web_results = search_web_for_education(
+            query=query,
+            subject=subject,
+            content_type=resource_type,
+            max_results=5
+        )
+        
+        # Calculate total results from unified search
+        total_unified = len(unified_results.get("results", []))
+        total_web = len(web_results.get("results", []))
+        
+        # Extract categorized results from unified search
+        categorized = unified_results.get("categorized_results", {})
+        
+        combined_results = {
+            "status": "success",
+            "query": query,
+            "search_sources": {
+                "unified_database_search": unified_results,
+                "web_search": web_results,
+                "documents": {"status": "included_in_unified_search"}
+            },
+            "summary": {
+                "total_results": total_unified + total_web,
+                "database_results": total_unified,
+                "web_results": total_web,
+                "database_breakdown": {
+                    "educational_resources": len(categorized.get("educational_resources", [])),
+                    "worksheets": len(categorized.get("worksheets", [])),
+                    "documents": len(categorized.get("educational_documents", []))
+                },
+                "search_parameters": {
+                    "query": query,
+                    "subject": subject,
+                    "difficulty": difficulty,
+                    "resource_type": resource_type,
+                    "include_documents": include_documents
+                }
+            }
+        }
+        
+        print(f"[RESOURCE_SUCCESS] Found {combined_results['summary']['total_results']} total resources")
+        print(f"  - Database (Unified): {total_unified}")
+        print(f"    - Educational Resources: {len(categorized.get('educational_resources', []))}")
+        print(f"    - Worksheets: {len(categorized.get('worksheets', []))}")
+        print(f"    - Documents: {len(categorized.get('educational_documents', []))}")
+        print(f"  - Web Results: {total_web}")
+        
+        return combined_results
+        
+    except Exception as e:
+        print(f"[RESOURCE_ERROR] Educational resource search failed: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Resource search failed: {str(e)}"
+        }
+
+
+def retrieve_educational_worksheets(
+    subject: str,
+    grade_level: str = "",
+    difficulty: str = "intermediate", 
+    curriculum: str = "",
+    worksheet_type: str = "practice"
+) -> dict:
+    """
+    Retrieve educational worksheets using the specialized retrieval agent.
+    
+    Args:
+        subject (str): Subject area (Mathematics, Science, English, etc.)
+        grade_level (str): Grade or class level 
+        difficulty (str): Difficulty level (easy, medium, hard)
+        curriculum (str): Curriculum standard (CBSE, IB, Common Core, Cambridge)
+        worksheet_type (str): Type of worksheet (practice, assessment, homework, quiz)
+        
+    Returns:
+        dict: Status and retrieved worksheets
+    """
+    print(f"[WORKSHEET_RETRIEVAL] Retrieving {subject} {grade_level} {difficulty} worksheets")
+    
+    try:
+        # Use unified search for worksheets specifically
+        worksheet_results = search_educational_content(
+            query=f"{subject} worksheets",
+            content_types=["worksheets"],
+            subject=subject,
+            difficulty=difficulty,
+            grade_level=grade_level,
+            curriculum=curriculum,
+            limit=10
+        )
+        
+        if worksheet_results.get("status") == "success":
+            # Extract worksheets from unified search results
+            all_results = worksheet_results.get("results", [])
+            worksheets = [result for result in all_results if result.get("source_collection") == "worksheets"]
+            metadata = worksheet_results.get("search_metadata", {})
+            
+            print(f"[WORKSHEET_SUCCESS] Retrieved {len(worksheets)} worksheets")
+            
+            # Enhance results with additional context
+            enhanced_result = {
+                "status": "success",
+                "worksheets": worksheets,
+                "retrieval_summary": {
+                    "total_worksheets": len(worksheets),
+                    "subject": subject,
+                    "grade_level": grade_level,
+                    "difficulty": difficulty,
+                    "curriculum": curriculum,
+                    "worksheet_type": worksheet_type,
+                    "filters_applied": metadata.get("filters_applied", []),
+                    "distributions": {
+                        "difficulty": metadata.get("difficulty_distribution", {}),
+                        "type": metadata.get("type_distribution", {})
+                    }
+                },
+                "recommendations": [
+                    f"Found {len(worksheets)} {difficulty} level {subject} worksheets",
+                    f"Worksheets are suitable for {grade_level} students" if grade_level else "Grade level not specified",
+                    f"Curriculum alignment: {curriculum}" if curriculum else "No specific curriculum filtering applied"
+                ]
+            }
+            
+            return enhanced_result
+        else:
+            return worksheet_results
+            
+    except Exception as e:
+        print(f"[WORKSHEET_ERROR] Worksheet retrieval failed: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Worksheet retrieval failed: {str(e)}"
+        }
+
+
+def check_curriculum_alignment(
+    content: str,
+    curriculum: str,
+    subject: str,
+    grade: str = ""
+) -> dict:
+    """
+    Check how well content aligns with curriculum standards.
+    
+    Args:
+        content (str): Educational content to analyze
+        curriculum (str): Curriculum standard (CBSE, IB, Common Core, Cambridge)
+        subject (str): Subject area
+        grade (str): Grade level
+        
+    Returns:
+        dict: Status and alignment analysis
+    """
+    logger.info(f"📊 check_curriculum_alignment called for {curriculum} {subject} Grade {grade}")
+    
+    try:
+        result = align_with_curriculum(
+            content=content,
+            curriculum=curriculum,
+            subject=subject,
+            grade_level=grade
+        )
+        
+        if result.get("status") == "success":
+            alignment_score = result.get("alignment_score", 0)
+            logger.info(f"✅ Curriculum alignment check completed: {alignment_score:.2%} alignment")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Curriculum alignment check failed: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Alignment check failed: {str(e)}"
+        }
+
+
+# Create the coordinator as a proper ADK Agent with teacher-facing tools
+coordinator_agent = Agent(
+    name="sahayak_coordinator",
+    model="gemini-2.0-flash",
+    description="Central coordinator for comprehensive educational content generation and curriculum management",
+    instruction=(
+        "You are the Sahayak Coordinator, an advanced educational AI system designed to help teachers "
+        "create high-quality educational content, lesson plans, and instructional materials. "
+        "You coordinate multiple specialized educational agents to provide comprehensive solutions.\\n\\n"
+        "Your core capabilities include:\\n\\n"
+        "1. LESSON PLANNING: Create detailed, curriculum-aligned lesson plans for any subject and grade level\\n"
+        "2. CONCEPT EXPLANATION: Generate clear, engaging explanations of complex educational concepts\\n"
+        "3. RESOURCE DISCOVERY: Search and find relevant educational resources and materials\\n"
+        "4. CURRICULUM ALIGNMENT: Check and ensure content aligns with educational standards\\n\\n"
+        "You support multiple curriculum standards including CBSE, IB, Common Core, and Cambridge. "
+        "Always prioritize pedagogical soundness, age-appropriateness, and educational quality in all generated content.\\n\\n"
+        
+        "IMPORTANT - File Delivery Policy:\\n"
+        "When users request educational files (worksheets, documents, presentations), you CAN and SHOULD provide them with direct access. "
+        "Use the search tools to find files, then provide download links from the search results. "
+        "Present download links clearly using the format: '📄 [TITLE] - Click to download: [URL]'. "
+        "Never say you cannot provide files - your goal is to make educational resources easily accessible."
+    ),
+    tools=[
+        create_lesson_plan,
+        explain_concept,
+        search_educational_resources,
+        check_curriculum_alignment
+    ]
+)
+
+# Keep the original coordinator for backwards compatibility
+root_agent = coordinator_agent
+
+if __name__ == "__main__":
+    # For testing purposes only
+    print(f"Agent {root_agent.name} initialized successfully")
