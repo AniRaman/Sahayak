@@ -33,11 +33,8 @@ from sub_agents.sahayak_content_agent.agent import (
 )
 
 from sub_agents.sahayak_retrieval_agent.agent import (
-    search_knowledge_base,
-    retrieve_worksheets,
-    find_documents,
-    query_file_storage,
-    search_by_metadata
+    search_educational_content,  # Primary unified search function
+    query_file_storage
 )
 
 # Configure logging
@@ -340,11 +337,12 @@ class SahayakCoordinatorAgent(Agent):
                 language="english"
             )
             
-            # Search knowledge base for additional context
-            knowledge_result = search_knowledge_base(
+            # Search knowledge base for additional context using unified search
+            knowledge_result = search_educational_content(
                 query=task_data.get("prompt", ""),
+                content_types=["lessons", "articles", "explanations"],
                 subject=task_data.get("subject", ""),
-                difficulty_level=task_data.get("complexity", "intermediate"),
+                difficulty=task_data.get("complexity", "intermediate"),
                 limit=3
             )
             
@@ -382,15 +380,51 @@ class SahayakCoordinatorAgent(Agent):
     async def _call_worksheet_agent(self, task_data: Dict) -> Dict[str, Any]:
         """Call WorksheetAgent via ADK MCP toolset"""
         try:
-            # Placeholder implementation - will be implemented when worksheet agent is created
-            logger.info("Calling WorksheetAgent (not yet implemented)")
-            return {
-                "status": "success", 
-                "slides": "Generated slides (placeholder)",
-                "worksheets": "Generated worksheets (placeholder)",
-                "agent": "worksheet_agent",
-                "note": "Agent not yet implemented with ADK"
+            logger.info("Calling WorksheetAgent with real implementation")
+            
+            # Import the actual WorksheetAgent function
+            from sub_agents.sahayak_worksheet_agent.agent import generate_educational_materials
+            
+            # Extract parameters from task_data
+            content = task_data.get("content", "")
+            file_info = task_data.get("file_info", {})
+            subject = task_data.get("subject", "General")
+            grade_level = task_data.get("grade_level", "Middle School")
+            curriculum = task_data.get("curriculum", "General")
+            output_format = task_data.get("output_format", "both")
+            
+            # Prepare parameters for WorksheetAgent
+            agent_params = {
+                "content": content,
+                "subject": subject,
+                "grade_level": grade_level,
+                "curriculum": curriculum,
+                "output_format": output_format,
+                "save_to_storage": True
             }
+            
+            # Add file parameters if available
+            if file_info:
+                if "artifact_filename" in file_info:
+                    agent_params["artifact_filename"] = file_info["artifact_filename"]
+                if "pdf_base64" in file_info:
+                    agent_params["pdf_base64"] = file_info["pdf_base64"]
+                if "image_base64" in file_info:
+                    agent_params["image_base64"] = file_info["image_base64"]
+                if "word_base64" in file_info:
+                    agent_params["word_base64"] = file_info["word_base64"]
+            
+            logger.info(f"Calling WorksheetAgent with params: content={len(content)} chars, subject={subject}, grade_level={grade_level}")
+            
+            # Call the actual WorksheetAgent function
+            result = generate_educational_materials(**agent_params)
+            
+            # Add agent identifier to result
+            result["agent"] = "worksheet_agent"
+            
+            logger.info(f"WorksheetAgent returned: {result.get('status')}")
+            return result
+            
         except Exception as e:
             logger.error(f"WorksheetAgent call failed: {e}")
             return {
@@ -705,16 +739,16 @@ def search_educational_resources(
     print(f"[RESOURCE_SEARCH] Comprehensive search for '{query}' in {subject} {difficulty}")
     
     try:
-        # Use the specialized retrieval agent for database search
-        kb_results = search_knowledge_base(
+        # Use the unified search function for comprehensive database search
+        unified_results = search_educational_content(
             query=query,
+            content_types=["all"] if resource_type == "all" else [resource_type],
             subject=subject,
-            difficulty_level=difficulty,
-            limit=8,
-            resource_type=resource_type
+            difficulty=difficulty,
+            limit=15  # Higher limit since we're doing unified search
         )
         
-        # Use content agent for web search
+        # Use content agent for web search (still separate as it searches external sources)
         web_results = search_web_for_education(
             query=query,
             subject=subject,
@@ -722,34 +756,30 @@ def search_educational_resources(
             max_results=5
         )
         
-        # Search for documents if requested
-        document_results = {}
-        if include_documents:
-            document_results = find_documents(
-                search_term=query,
-                subject=subject,
-                document_type=resource_type if resource_type != "all" else "all",
-                limit=6
-            )
-        
-        # Calculate total results
-        total_kb = len(kb_results.get("results", []))
+        # Calculate total results from unified search
+        total_unified = len(unified_results.get("results", []))
         total_web = len(web_results.get("results", []))
-        total_docs = len(document_results.get("documents", []))
+        
+        # Extract categorized results from unified search
+        categorized = unified_results.get("categorized_results", {})
         
         combined_results = {
             "status": "success",
             "query": query,
             "search_sources": {
-                "knowledge_base": kb_results,
+                "unified_database_search": unified_results,
                 "web_search": web_results,
-                "documents": document_results if include_documents else {"status": "skipped"}
+                "documents": {"status": "included_in_unified_search"}
             },
             "summary": {
-                "total_results": total_kb + total_web + total_docs,
-                "knowledge_base_results": total_kb,
+                "total_results": total_unified + total_web,
+                "database_results": total_unified,
                 "web_results": total_web,
-                "document_results": total_docs,
+                "database_breakdown": {
+                    "educational_resources": len(categorized.get("educational_resources", [])),
+                    "worksheets": len(categorized.get("worksheets", [])),
+                    "documents": len(categorized.get("educational_documents", []))
+                },
                 "search_parameters": {
                     "query": query,
                     "subject": subject,
@@ -761,9 +791,11 @@ def search_educational_resources(
         }
         
         print(f"[RESOURCE_SUCCESS] Found {combined_results['summary']['total_results']} total resources")
-        print(f"  - Knowledge Base: {total_kb}")
+        print(f"  - Database (Unified): {total_unified}")
+        print(f"    - Educational Resources: {len(categorized.get('educational_resources', []))}")
+        print(f"    - Worksheets: {len(categorized.get('worksheets', []))}")
+        print(f"    - Documents: {len(categorized.get('educational_documents', []))}")
         print(f"  - Web Results: {total_web}")
-        print(f"  - Documents: {total_docs}")
         
         return combined_results
         
@@ -798,19 +830,22 @@ def retrieve_educational_worksheets(
     print(f"[WORKSHEET_RETRIEVAL] Retrieving {subject} {grade_level} {difficulty} worksheets")
     
     try:
-        # Use specialized retrieval agent for worksheets
-        worksheet_results = retrieve_worksheets(
+        # Use unified search for worksheets specifically
+        worksheet_results = search_educational_content(
+            query=f"{subject} worksheets",
+            content_types=["worksheets"],
             subject=subject,
-            grade_level=grade_level,
             difficulty=difficulty,
-            worksheet_type=worksheet_type,
+            grade_level=grade_level,
             curriculum=curriculum,
             limit=10
         )
         
         if worksheet_results.get("status") == "success":
-            worksheets = worksheet_results.get("worksheets", [])
-            metadata = worksheet_results.get("retrieval_metadata", {})
+            # Extract worksheets from unified search results
+            all_results = worksheet_results.get("results", [])
+            worksheets = [result for result in all_results if result.get("source_collection") == "worksheets"]
+            metadata = worksheet_results.get("search_metadata", {})
             
             print(f"[WORKSHEET_SUCCESS] Retrieved {len(worksheets)} worksheets")
             
@@ -907,7 +942,13 @@ coordinator_agent = Agent(
         "3. RESOURCE DISCOVERY: Search and find relevant educational resources and materials\\n"
         "4. CURRICULUM ALIGNMENT: Check and ensure content aligns with educational standards\\n\\n"
         "You support multiple curriculum standards including CBSE, IB, Common Core, and Cambridge. "
-        "Always prioritize pedagogical soundness, age-appropriateness, and educational quality in all generated content."
+        "Always prioritize pedagogical soundness, age-appropriateness, and educational quality in all generated content.\\n\\n"
+        
+        "IMPORTANT - File Delivery Policy:\\n"
+        "When users request educational files (worksheets, documents, presentations), you CAN and SHOULD provide them with direct access. "
+        "Use the search tools to find files, then provide download links from the search results. "
+        "Present download links clearly using the format: '📄 [TITLE] - Click to download: [URL]'. "
+        "Never say you cannot provide files - your goal is to make educational resources easily accessible."
     ),
     tools=[
         create_lesson_plan,
