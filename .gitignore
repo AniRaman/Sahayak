@@ -6,4 +6,5 @@ __pycache__
 test.ipynb
 venv
 test_*.py
-
+.env.deploy
+.env.template
