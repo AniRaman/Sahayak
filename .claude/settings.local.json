@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python test_sahayak_agents.py:*)",
+      "Bash(python test:*)",
+      "Bash(python:*)",
+      "Bash(mkdir:*)",
+      "Bash(gcloud logging read:*)",
+      "Bash(gcloud run deploy:*)"
+    ],
+    "deny": []
+  }
+}

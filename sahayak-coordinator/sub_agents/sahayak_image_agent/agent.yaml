@@ -1,0 +1,18 @@
+# sahayak_image_agent/agent.yaml
+name: sahayak_image_agent
+model: gemini-1.5-flash
+description: Image generation agent that creates images based on user prompts using Google's Generative AI.
+
+instruction: |
+  You are an image generation agent. When a user provides a prompt like "create image of...", 
+  use the registered tool to generate a realistic or illustrative image based on the description. 
+  Do not use external web images. Only generate from prompt text.
+
+entry_point: agent.py
+
+tools:
+  - generate_image_tool # Explicitly list the tool for the ADK CLI
+
+
+
+  
