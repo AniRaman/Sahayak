@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎓 Sahayak - Educational AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .chat-container {
+            display: flex;
+            height: 600px;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            padding: 20px;
+        }
+
+        .agents-list {
+            margin-bottom: 30px;
+        }
+
+        .agents-list h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .agent-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4285f4;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .agent-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .agent-card.active {
+            border-left-color: #34a853;
+            background: #e8f5e8;
+        }
+
+        .agent-name {
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 5px;
+        }
+
+        .agent-desc {
+            font-size: 0.9em;
+            color: #6c757d;
+            line-height: 1.4;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message.bot {
+            text-align: left;
+        }
+
+        .message-content {
+            display: inline-block;
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 20px;
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: #4285f4;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e9ecef;
+            border-bottom-left-radius: 5px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-group {
+            flex: 1;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #4285f4;
+        }
+
+        #messageInput {
+            min-height: 50px;
+            resize: vertical;
+        }
+
+        .file-input-container {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-label {
+            padding: 12px 20px;
+            background: #6c757d;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            display: inline-block;
+        }
+
+        .file-label:hover {
+            background: #5a6268;
+        }
+
+        .send-button {
+            padding: 12px 25px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .send-button:hover {
+            background: #3367d6;
+            transform: translateY(-1px);
+        }
+
+        .send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        .loading::after {
+            content: '';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+
+        .file-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #1565c0;
+        }
+
+        .agent-indicator {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 15px;
+            padding: 5px 12px;
+            font-size: 0.8em;
+            color: #2e7d32;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .chat-container {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .sidebar {
+                width: 100%;
+                order: 2;
+            }
+            
+            .chat-area {
+                order: 1;
+                height: 500px;
+            }
+            
+            .input-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 Sahayak Educational AI</h1>
+            <p>Your intelligent educational content companion</p>
+        </div>
+        
+        <div class="chat-container">
+            <div class="sidebar">
+                <div class="agents-list">
+                    <h3>🤖 Available Agents</h3>
+                    <div class="agent-card" data-agent="content">
+                        <div class="agent-name">📝 Content Agent</div>
+                        <div class="agent-desc">Create lesson plans, explanations, and educational content</div>
+                    </div>
+                    <div class="agent-card" data-agent="worksheet">
+                        <div class="agent-name">📋 Worksheet Agent</div>
+                        <div class="agent-desc">Generate comprehensive worksheets and slides from files</div>
+                    </div>
+                    <div class="agent-card" data-agent="qa">
+                        <div class="agent-name">❓ QA Agent</div>
+                        <div class="agent-desc">Create questions and answers from content</div>
+                    </div>
+                    <div class="agent-card" data-agent="image">
+                        <div class="agent-name">🎨 Image Agent</div>
+                        <div class="agent-desc">Generate educational images and diagrams</div>
+                    </div>
+                    <div class="agent-card" data-agent="retrieval">
+                        <div class="agent-name">🔍 Retrieval Agent</div>
+                        <div class="agent-desc">Search existing educational resources</div>
+                    </div>
+                </div>
+                
+                <div class="agents-list">
+                    <h3>💡 Quick Examples</h3>
+                    <div class="agent-card example" data-example="Create a lesson plan about photosynthesis for grade 8">
+                        <div class="agent-name">Lesson Plan</div>
+                        <div class="agent-desc">Create a lesson plan about photosynthesis</div>
+                    </div>
+                    <div class="agent-card example" data-example="Generate an image of the solar system">
+                        <div class="agent-name">Solar System Image</div>
+                        <div class="agent-desc">Generate educational diagram</div>
+                    </div>
+                    <div class="agent-card example" data-example="Create worksheets with questions about mathematics">
+                        <div class="agent-name">Math Worksheets</div>
+                        <div class="agent-desc">Generate practice worksheets</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-area">
+                <div class="messages" id="messages">
+                    <div class="message bot">
+                        <div class="message-content">
+                            <div class="agent-indicator">🎓 Sahayak Coordinator</div>
+                            Hi there! Hope you're doing great 😊 Just let me know—would you like me to assist with your queries, generate documents, or fetch something specific for you today?
+                            <br><br>
+                            I can help you with:
+                            <ul style="margin-top: 10px; padding-left: 20px;">
+                                <li>📝 Creating educational content and lesson plans</li>
+                                <li>📋 Generating worksheets and assignments</li>
+                                <li>❓ Creating questions from uploaded files</li>
+                                <li>🎨 Generating educational images and diagrams</li>
+                                <li>🔍 Finding existing educational resources</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-area">
+                    <div class="input-container">
+                        <div class="input-group">
+                            <div class="input-row">
+                                <input type="text" class="input-field" id="subject" placeholder="Subject (e.g., Math, Science)">
+                                <input type="text" class="input-field" id="gradeLevel" placeholder="Grade Level">
+                                <input type="text" class="input-field" id="curriculum" placeholder="Curriculum (optional)">
+                            </div>
+                            <div class="input-row">
+                                <textarea class="input-field" id="messageInput" placeholder="What would you like me to help you with today?" rows="2"></textarea>
+                                <div class="file-input-container">
+                                    <input type="file" class="file-input" id="fileInput" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                                    <label for="fileInput" class="file-label">📎 Upload File</label>
+                                </div>
+                            </div>
+                            <div id="fileInfo" class="file-info" style="display: none;"></div>
+                        </div>
+                        <button class="send-button" id="sendButton">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const subjectInput = document.getElementById('subject');
+        const gradeLevelInput = document.getElementById('gradeLevel');
+        const curriculumInput = document.getElementById('curriculum');
+
+        let currentFile = null;
+        let selectedAgent = null;
+
+        // Agent selection
+        document.querySelectorAll('.agent-card[data-agent]').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                selectedAgent = card.dataset.agent;
+            });
+        });
+
+        // Example selection
+        document.querySelectorAll('.agent-card[data-example]').forEach(card => {
+            card.addEventListener('click', () => {
+                messageInput.value = card.dataset.example;
+                messageInput.focus();
+            });
+        });
+
+        // File input handler
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                currentFile = file;
+                fileInfo.style.display = 'block';
+                fileInfo.innerHTML = `📎 Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            } else {
+                currentFile = null;
+                fileInfo.style.display = 'none';
+            }
+        });
+
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message && !currentFile) return;
+
+            const userMessage = message || `Process uploaded file: ${currentFile.name}`;
+            
+            // Add user message
+            addMessage(userMessage, 'user');
+            
+            // Clear input
+            messageInput.value = '';
+            sendButton.disabled = true;
+            
+            // Show loading
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading';
+            loadingDiv.textContent = 'Thinking';
+            messagesContainer.appendChild(loadingDiv);
+            scrollToBottom();
+
+            try {
+                let response;
+                
+                if (currentFile) {
+                    // Handle file upload
+                    const formData = new FormData();
+                    formData.append('file', currentFile);
+                    formData.append('user_input', message);
+                    formData.append('subject', subjectInput.value);
+                    formData.append('grade_level', gradeLevelInput.value);
+                    formData.append('curriculum', curriculumInput.value);
+                    if (selectedAgent) formData.append('force_agent', selectedAgent);
+                    
+                    response = await fetch('/process-file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    // Handle text message
+                    const payload = {
+                        user_input: message,
+                        subject: subjectInput.value,
+                        grade_level: gradeLevelInput.value,
+                        curriculum: curriculumInput.value,
+                        language: 'English'
+                    };
+                    if (selectedAgent) payload.force_agent = selectedAgent;
+                    
+                    response = await fetch('/process', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                const data = await response.json();
+                
+                // Remove loading
+                messagesContainer.removeChild(loadingDiv);
+                
+                // Add bot response
+                addBotResponse(data);
+                
+            } catch (error) {
+                // Remove loading
+                messagesContainer.removeChild(loadingDiv);
+                
+                addMessage(`❌ Sorry, I encountered an error: ${error.message}`, 'bot');
+            }
+            
+            // Reset
+            sendButton.disabled = false;
+            currentFile = null;
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
+            messageInput.focus();
+        }
+
+        function addMessage(content, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = content;
+            
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function addBotResponse(data) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            let responseText = '';
+            
+            if (data.status === 'success') {
+                const agent = data.result?.recommended_agent || 'coordinator';
+                responseText += `<div class="agent-indicator">🤖 ${agent.charAt(0).toUpperCase() + agent.slice(1)} Agent</div>`;
+                
+                if (data.result?.message) {
+                    responseText += data.result.message + '<br><br>';
+                }
+                
+                if (data.result?.analysis) {
+                    responseText += `<strong>Analysis:</strong><br>`;
+                    responseText += `• Detected intent: ${data.result.analysis.recommended_agent}<br>`;
+                    responseText += `• Confidence: ${data.result.analysis.confidence}<br>`;
+                    responseText += `• Input type: ${data.result.analysis.input_type}<br>`;
+                    
+                    if (data.result.analysis.keywords) {
+                        const keywords = Object.entries(data.result.analysis.keywords)
+                            .filter(([k, v]) => v > 0)
+                            .map(([k, v]) => `${k} (${v})`)
+                            .join(', ');
+                        if (keywords) {
+                            responseText += `• Keywords found: ${keywords}<br>`;
+                        }
+                    }
+                }
+                
+                responseText += '<br>Is there anything else you\'d like me to take care of for you 🤗?';
+            } else {
+                responseText = `❌ ${data.error_message || 'Something went wrong'}`;
+            }
+            
+            contentDiv.innerHTML = responseText;
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Auto-focus on message input
+        messageInput.focus();
+    </script>
+</body>
+</html>

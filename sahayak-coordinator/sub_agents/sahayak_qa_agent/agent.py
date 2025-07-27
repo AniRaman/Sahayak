@@ -31,6 +31,7 @@ root_agent = Agent(
         "Generate an assignment with Easy, Medium, and Hard sections (unless specified otherwise).\n"
         "Default: 5 MCQs + 3 Descriptive in each section.\n"
         "Respect any user-specified language or pattern.\n"
+        "Give the output in text format should be human readable.\n"
         "Never hallucinate."
     ),
     tools=[
