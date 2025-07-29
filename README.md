@@ -207,22 +207,11 @@ response = coordinate_request(
 - API keys are managed through environment variables
 - User data is processed in compliance with educational privacy standards
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - Built using Google's Generative AI and Cloud Platform
 - Leverages the Google Agent Development Kit (ADK)
 - Inspired by the need for intelligent educational content creation
-
-## 📞 Support
-
-For support and questions:
-- Create an issue in this repository
-- Contact the development team
-- Check the documentation in the `AgenticAIHackathon/` directory
 
 ---
 
