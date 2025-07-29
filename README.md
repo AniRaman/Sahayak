@@ -73,11 +73,6 @@ User Request → Coordinator → Agent Selection → Specialized Processing → 
    GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
    ```
 
-4. **Run the application**
-   ```bash
-   python -m uvicorn main:app --host 0.0.0.0 --port 8080
-   ```
-
 ### Web Interface
 Access the interactive web interface at `http://localhost:8080` to interact with Sahayak through a user-friendly chat interface.
 
@@ -95,10 +90,6 @@ sahayak/
 │       ├── sahayak_qa_agent/         # Question-answer generation
 │       ├── sahayak_retrieval_agent/  # Resource search and retrieval
 │       └── sahayak_worksheet_agent/  # Worksheet and material creation
-├── templates/                        # Web interface templates
-│   ├── index.html                    # Main chat interface
-│   └── chat.html                     # Chat page
-├── static/                          # Static files and generated content
 └── AgenticAIHackathon/              # Documentation and project materials
 ```
 
@@ -169,37 +160,6 @@ Manages:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 Usage Examples
-
-### Creating Educational Content
-```python
-from sahayak_coordinator.agent import coordinate_request
-
-response = coordinate_request(
-    user_input="Create a lesson plan about photosynthesis for grade 8",
-    subject="Biology",
-    grade_level="8",
-    curriculum="NGSS"
-)
-```
-
-### Processing Educational Documents
-```python
-response = coordinate_request(
-    user_input="Create worksheets from this PDF",
-    file_content="base64_encoded_pdf",
-    file_type="application/pdf",
-    subject="Mathematics"
-)
-```
-
-### Generating Educational Images
-```python
-response = coordinate_request(
-    user_input="Generate an image of the solar system with labels",
-    force_agent="image"
-)
-```
 
 ## 🔒 Security & Privacy
 
